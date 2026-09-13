@@ -1,0 +1,133 @@
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #f4f6f8;
+  color: #1a1a1a;
+}
+.oculto { display: none !important; }
+
+.pantalla { min-height: 100vh; padding-bottom: 80px; }
+
+.badge {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  text-align: center;
+  padding: 6px 8px;
+  font-size: 13px;
+  z-index: 50;
+}
+.badge-online { background: #dcfce7; color: #166534; }
+.badge-offline { background: #fef9c3; color: #854d0e; }
+
+.card-login {
+  max-width: 380px;
+  margin: 60px auto;
+  background: #fff;
+  border-radius: 16px;
+  padding: 28px 24px;
+  box-shadow: 0 4px 20px rgba(0,0,0,.06);
+}
+.card-login h1 { margin: 0 0 2px; font-size: 26px; }
+.subt { color: #666; margin-top: 0; }
+.logo-login { width: 64px; height: 64px; border-radius: 16px; display: block; margin: 0 auto 10px; }
+.logo-chico { width: 30px; height: 30px; border-radius: 8px; }
+.topbar-marca { display: flex; align-items: center; gap: 8px; }
+.topbar-marca h2 { margin: 0; }
+
+form { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; }
+label { font-size: 13px; color: #444; margin-top: 8px; }
+input, select {
+  padding: 10px 12px;
+  border: 1px solid #d8dce1;
+  border-radius: 10px;
+  font-size: 15px;
+}
+.error { color: #dc2626; font-size: 13px; min-height: 18px; }
+.nota { font-size: 12px; color: #888; margin-top: 14px; }
+
+.btn {
+  padding: 12px;
+  border-radius: 10px;
+  border: none;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-primario { background: #1d4ed8; color: #fff; margin-top: 10px; }
+.btn-secundario { background: #eef1f5; color: #1a1a1a; }
+.btn-texto { background: transparent; color: #1d4ed8; font-weight: 500; }
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 16px 8px;
+}
+.topbar h2 { margin: 0; }
+
+.lista { padding: 8px 16px 100px; display: flex; flex-direction: column; gap: 12px; }
+.vacio { text-align: center; color: #888; margin-top: 40px; }
+
+.tarjeta {
+  background: #fff;
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.05);
+}
+.tarjeta-header { display: flex; justify-content: space-between; align-items: center; }
+.plan-chip {
+  font-size: 11px;
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.tarjeta-info { font-size: 13px; color: #555; margin-top: 4px; }
+.tarjeta-acciones { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.tarjeta-acciones .btn { flex: 1; min-width: 100px; padding: 10px; font-size: 14px; }
+.btn-pagar { background: #16a34a; color: #fff; }
+.btn-pagar:disabled { background: #cbd5e1; color: #64748b; cursor: default; }
+.btn-whatsapp { background: #22c55e; color: #fff; text-decoration: none; text-align: center; display: flex; align-items: center; justify-content: center; }
+.btn-whatsapp.grande { flex: none; width: 100%; margin: 10px 0 16px; padding: 12px; }
+
+.fab {
+  position: fixed;
+  bottom: 20px; left: 16px; right: 16px;
+  background: #1d4ed8;
+  color: #fff;
+  padding: 16px;
+  border: none;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.modal {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.4);
+  display: flex; align-items: flex-end; justify-content: center;
+  z-index: 100;
+}
+.modal-contenido {
+  background: #fff;
+  width: 100%; max-width: 480px;
+  border-radius: 18px 18px 0 0;
+  padding: 20px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-header { display: flex; justify-content: space-between; align-items: center; }
+.preview { font-size: 13px; color: #1d4ed8; font-weight: 600; margin-top: 6px; }
+
+.detalle-info { padding: 0 16px; color: #555; font-size: 14px; }
+.historial { list-style: none; padding: 0 16px; margin: 8px 0; }
+.historial li {
+  background: #fff;
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+@media (min-width: 480px) {
+  .lista { max-width: 480px; margin: 0 auto; }
+}

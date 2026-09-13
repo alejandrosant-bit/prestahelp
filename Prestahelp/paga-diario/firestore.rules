@@ -1,0 +1,24 @@
+rules_version = '2';
+
+// Reglas multi-tenant: cada cobrador solo puede leer/escribir su propia
+// cartera de clientes y préstamos. Nadie puede ver los datos de otro.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /cobradores/{cobradorId} {
+      allow read, write: if request.auth != null && request.auth.uid == cobradorId;
+
+      match /clientes/{clienteId} {
+        allow read, write: if request.auth != null && request.auth.uid == cobradorId;
+      }
+
+      match /prestamos/{prestamoId} {
+        allow read, write: if request.auth != null && request.auth.uid == cobradorId;
+
+        match /pagos/{pagoId} {
+          allow read, write: if request.auth != null && request.auth.uid == cobradorId;
+        }
+      }
+    }
+  }
+}

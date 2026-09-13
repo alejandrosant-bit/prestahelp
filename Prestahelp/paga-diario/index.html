@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+<title>Prestahelp</title>
+<link rel="manifest" href="./manifest.json" />
+<link rel="icon" href="./icon-192.png" />
+<link rel="apple-touch-icon" href="./icon-192.png" />
+<meta name="theme-color" content="#1d4ed8" />
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+
+<div id="badge-conexion" class="badge"></div>
+
+<!-- ===================== LOGIN ===================== -->
+<div id="vista-login" class="pantalla">
+  <div class="card-login">
+    <img src="./icon-192.png" alt="Prestahelp" class="logo-login" />
+    <h1>Prestahelp</h1>
+    <p class="subt">Control de cobro diario</p>
+    <form id="form-login">
+      <label>Correo</label>
+      <input id="login-email" type="email" required autocomplete="username" />
+      <label>Clave</label>
+      <input id="login-pass" type="password" required autocomplete="current-password" />
+      <p id="login-error" class="error"></p>
+      <button type="submit" class="btn btn-primario">Entrar</button>
+    </form>
+    <p class="nota">La primera vez necesitas internet. Después, la sesión queda guardada en el teléfono. Tu usuario y clave te los da quien te vendió la app.</p>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div id="vista-app" class="pantalla oculto">
+  <header class="topbar">
+    <div class="topbar-marca">
+      <img src="./icon-192.png" alt="" class="logo-chico" />
+      <h2>Prestahelp</h2>
+    </div>
+    <button id="btn-salir" class="btn btn-texto">Salir</button>
+  </header>
+
+  <div id="lista-prestamos" class="lista"></div>
+
+  <button id="btn-nuevo-prestamo" class="fab">+ Nuevo préstamo</button>
+</div>
+
+<!-- ===================== MODAL NUEVO PRÉSTAMO ===================== -->
+<div id="modal-nuevo-prestamo" class="modal oculto">
+  <div class="modal-contenido">
+    <div class="modal-header">
+      <h3>Nuevo préstamo</h3>
+      <button type="button" id="btn-cerrar-modal" class="btn btn-texto">✕</button>
+    </div>
+    <form id="form-nuevo-prestamo">
+      <label>Nombre del cliente</label>
+      <input id="np-nombre" required />
+      <label>WhatsApp del cliente (con código de país, ej. 584141234567)</label>
+      <input id="np-telefono" type="tel" placeholder="584141234567" />
+      <label>Monto prestado</label>
+      <input id="np-monto" type="number" min="1" required />
+      <label>Interés (%)</label>
+      <input id="np-interes" type="number" min="0" step="0.1" required />
+      <label>Plan de pago</label>
+      <select id="np-plan" required>
+        <option value="">Selecciona un plan</option>
+        <option value="24dias">24 días (diario)</option>
+        <option value="8semanas">8 semanas (semanal)</option>
+        <option value="4semanas">4 semanas (semanal)</option>
+      </select>
+      <label>Fecha de inicio</label>
+      <input id="np-fecha-inicio" type="date" required />
+      <label>Fecha de finalización (estimada)</label>
+      <input id="np-fecha-fin" type="date" disabled />
+      <p id="preview-calculo" class="preview"></p>
+      <button type="submit" class="btn btn-primario">Guardar préstamo</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== DETALLE ===================== -->
+<div id="vista-detalle" class="pantalla oculto">
+  <header class="topbar">
+    <button type="button" id="btn-volver-lista" class="btn btn-texto">← Volver</button>
+    <h2 id="detalle-titulo"></h2>
+  </header>
+  <p id="detalle-info" class="detalle-info"></p>
+  <div id="detalle-whatsapp-cont"></div>
+  <h3>Historial de pagos</h3>
+  <ul id="detalle-historial" class="historial"></ul>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
