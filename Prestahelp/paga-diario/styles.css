@@ -144,7 +144,8 @@ h3 { padding: 0 16px; margin: 18px 0 4px; }
 .cuota-fila.atrasada { background: #fef2f2; border-color: #fecaca; }
 .cuota-num { font-weight: 600; color: #444; width: 32px; }
 .cuota-fecha { flex: 1; color: #666; }
-.cuota-estado { font-weight: 600; font-size: 13px; }
+.cuota-monto { color: #444; font-size: 13px; white-space: nowrap; }
+.cuota-estado { font-weight: 600; font-size: 13px; white-space: nowrap; }
 .cuota-fila.pagada .cuota-estado { color: #16a34a; }
 .cuota-fila.atrasada .cuota-estado { color: #dc2626; }
 .cuota-fila.pendiente .cuota-estado { color: #94a3b8; }

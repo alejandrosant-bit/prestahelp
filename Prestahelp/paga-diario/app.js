@@ -669,6 +669,7 @@ function mostrarDetalle(prestamoId, p) {
         <div class="cuota-fila ${pagada ? "pagada" : atrasada ? "atrasada" : "pendiente"}">
           <span class="cuota-num">#${n}</span>
           <span class="cuota-fecha">${formatoBonito(fechaNom)}</span>
+          <span class="cuota-monto">${miles(p.valorCuota)}</span>
           <span class="cuota-estado">${pagada ? "✓ Pagada" : atrasada ? "Atrasada" : "Pendiente"}</span>
           <button type="button" class="btn-nota" data-nota="${n}" title="Agregar/editar nota">📝</button>
         </div>
