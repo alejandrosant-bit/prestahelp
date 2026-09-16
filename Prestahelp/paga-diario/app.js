@@ -22,6 +22,7 @@ import {
   doc,
   setDoc,
   deleteDoc,
+  getDocs,
   query,
   orderBy,
   serverTimestamp,
@@ -358,16 +359,49 @@ function suscribirPrestamos() {
   });
 }
 
+// Nombres con los que se identifica al mismo cliente aunque tenga
+// varios préstamos (activos o ya completados) — así en la lista
+// aparece UNA sola vez, y se despliega al tocar su nombre.
+const ORDEN_URGENCIA = ["atrasado", "hoy", "manana", "al_dia", "completado"];
+const clientesExpandidos = new Set();
+
+function claveCliente(p) {
+  return (p.clienteNombre || "").trim().toLowerCase();
+}
+
+function estadoTexto(clasif, p) {
+  if (clasif.categoria === "completado") {
+    return `✅ Completado (${clasif.pagados}/${p.numCuotas})`;
+  }
+  const etiqueta =
+    clasif.categoria === "atrasado" ? "Atrasado desde" :
+    clasif.categoria === "hoy" ? "Cobrar hoy" :
+    clasif.categoria === "manana" ? "Cobrar mañana" : "Próximo cobro";
+  return `${etiqueta}: ${formatoBonito(clasif.proximaFecha)} · Cuota ${clasif.proximaCuota}/${p.numCuotas}`;
+}
+
 function renderLista() {
-  const grupos = { atrasado: [], hoy: [], manana: [], al_dia: [], completado: [], cargando: [] };
+  const porCliente = new Map(); // clave -> { nombre, items: [{id, p, clasif}] }
+  let hayCargando = false;
 
   prestamos.forEach((entry, id) => {
-    if (!entry.cargado) {
-      grupos.cargando.push({ id, entry });
-      return;
-    }
+    if (!entry.cargado) { hayCargando = true; return; }
     const clasif = clasificarPrestamo(entry.p, entry.pagadasSet);
-    grupos[clasif.categoria].push({ id, entry, clasif });
+    const clave = claveCliente(entry.p);
+    if (!porCliente.has(clave)) porCliente.set(clave, { nombre: entry.p.clienteNombre, items: [] });
+    porCliente.get(clave).items.push({ id, p: entry.p, clasif });
+  });
+
+  // A cada cliente le asigna la sección de su préstamo más urgente
+  // (si tiene varios), así nunca queda "escondido" en Completados
+  // mientras tenga algo pendiente en otro préstamo.
+  const seccionesClientes = { atrasado: [], hoy: [], manana: [], al_dia: [], completado: [] };
+  porCliente.forEach((cliente, clave) => {
+    let mejor = "completado";
+    cliente.items.forEach(({ clasif }) => {
+      if (ORDEN_URGENCIA.indexOf(clasif.categoria) < ORDEN_URGENCIA.indexOf(mejor)) mejor = clasif.categoria;
+    });
+    seccionesClientes[mejor].push({ clave, cliente });
   });
 
   listaPrestamos.innerHTML = "";
@@ -378,7 +412,7 @@ function renderLista() {
   }
 
   SECCIONES.forEach(({ key, titulo }) => {
-    const items = grupos[key];
+    const items = seccionesClientes[key];
     if (!items || items.length === 0) return;
 
     const h = document.createElement("div");
@@ -386,27 +420,52 @@ function renderLista() {
     h.innerHTML = `<span class="punto"></span> ${titulo} <span class="cuenta">(${items.length})</span>`;
     listaPrestamos.appendChild(h);
 
-    items.forEach(({ id, entry, clasif }) => {
-      listaPrestamos.appendChild(renderTarjetaPrestamo(id, entry.p, clasif));
+    items.forEach(({ clave, cliente }) => {
+      listaPrestamos.appendChild(renderFilaCliente(clave, cliente));
     });
   });
+
+  if (hayCargando && listaPrestamos.innerHTML === "") {
+    listaPrestamos.innerHTML = `<p class="vacio">Cargando…</p>`;
+  }
+}
+
+function renderFilaCliente(clave, cliente) {
+  const expandido = clientesExpandidos.has(clave);
+  const wrap = document.createElement("div");
+  wrap.className = "cliente-grupo";
+
+  const cabecera = document.createElement("div");
+  cabecera.className = "cliente-cabecera";
+  const resumen = cliente.items.length === 1
+    ? estadoTexto(cliente.items[0].clasif, cliente.items[0].p)
+    : `${cliente.items.length} préstamos`;
+  cabecera.innerHTML = `
+    <span class="cliente-flecha">${expandido ? "▾" : "▸"}</span>
+    <strong class="cliente-nombre">${cliente.nombre}</strong>
+    <span class="cliente-resumen">${resumen}</span>
+  `;
+  cabecera.addEventListener("click", () => {
+    if (expandido) clientesExpandidos.delete(clave);
+    else clientesExpandidos.add(clave);
+    renderLista();
+  });
+  wrap.appendChild(cabecera);
+
+  if (expandido) {
+    cliente.items.forEach(({ id, p, clasif }) => {
+      wrap.appendChild(renderTarjetaPrestamo(id, p, clasif));
+    });
+  }
+
+  return wrap;
 }
 
 function renderTarjetaPrestamo(id, p, clasif) {
   const div = document.createElement("div");
   div.className = `tarjeta ${clasif.categoria}`;
   const wa = linkWhatsapp(p.clienteTelefono, p.clienteNombre);
-
-  let lineaEstado;
-  if (clasif.categoria === "completado") {
-    lineaEstado = `✅ Completado (${clasif.pagados}/${p.numCuotas})`;
-  } else {
-    const etiqueta =
-      clasif.categoria === "atrasado" ? "Atrasado desde" :
-      clasif.categoria === "hoy" ? "Cobrar hoy" :
-      clasif.categoria === "manana" ? "Cobrar mañana" : "Próximo cobro";
-    lineaEstado = `${etiqueta}: ${formatoBonito(clasif.proximaFecha)} · Cuota ${clasif.proximaCuota}/${p.numCuotas}`;
-  }
+  const lineaEstado = estadoTexto(clasif, p);
 
   div.innerHTML = `
     <div class="tarjeta-header">
@@ -419,6 +478,7 @@ function renderTarjetaPrestamo(id, p, clasif) {
       ${clasif.categoria !== "completado" ? `<button type="button" class="btn btn-pagar" data-id="${id}">Marcar cuota ${clasif.proximaCuota}</button>` : ""}
       <button type="button" class="btn btn-secundario" data-ver="${id}">Ver cronograma</button>
       ${wa ? `<a class="btn btn-whatsapp" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
+      <button type="button" class="btn btn-eliminar" data-eliminar="${id}">Eliminar</button>
     </div>
   `;
   const btnPagar = div.querySelector(".btn-pagar");
@@ -426,7 +486,24 @@ function renderTarjetaPrestamo(id, p, clasif) {
     btnPagar.addEventListener("click", () => marcarCuota(id, clasif.proximaCuota, p.valorCuota));
   }
   div.querySelector("[data-ver]").addEventListener("click", () => mostrarDetalle(id, p));
+  div.querySelector("[data-eliminar]").addEventListener("click", () => eliminarPrestamo(id, p.clienteNombre));
   return div;
+}
+
+// ------------------------------------------------------------
+// Eliminar un préstamo por completo (por si se creó por error).
+// Borra primero todas sus cuotas guardadas y después el préstamo,
+// para no dejar datos sueltos en Firestore.
+// ------------------------------------------------------------
+async function eliminarPrestamo(prestamoId, nombreCliente) {
+  const ok = confirm(`¿Eliminar el préstamo de ${nombreCliente}? Esto borra también todo su historial de pagos y no se puede deshacer.`);
+  if (!ok) return;
+
+  const pagosRef = collection(db, "cobradores", cobradorId, "prestamos", prestamoId, "pagos");
+  const pagosSnap = await getDocs(pagosRef);
+  await Promise.all(pagosSnap.docs.map((d) => deleteDoc(d.ref)));
+
+  await deleteDoc(doc(db, "cobradores", cobradorId, "prestamos", prestamoId));
 }
 
 // ------------------------------------------------------------

@@ -167,6 +167,21 @@ h3 { padding: 0 16px; margin: 18px 0 4px; }
 .seccion-completado .punto { background: #94a3b8; }
 .seccion-completado { color: #64748b; }
 
+.cliente-grupo { display: flex; flex-direction: column; gap: 10px; }
+.cliente-cabecera {
+  display: flex; align-items: center; gap: 10px;
+  background: #fff;
+  padding: 14px 16px;
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.05);
+  cursor: pointer;
+}
+.cliente-flecha { color: #94a3b8; font-size: 13px; width: 12px; }
+.cliente-nombre { flex: 0 0 auto; }
+.cliente-resumen { color: #666; font-size: 13px; margin-left: auto; text-align: right; }
+.cliente-grupo .tarjeta { margin-left: 14px; }
+.btn-eliminar { background: #fee2e2; color: #b91c1c; }
+
 .tarjeta.atrasado { border-left: 4px solid #dc2626; }
 .tarjeta.hoy { border-left: 4px solid #d97706; }
 .tarjeta.manana { border-left: 4px solid #2563eb; }
