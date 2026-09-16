@@ -37,16 +37,15 @@ aislada de los demás gracias a las reglas de `firestore.rules`:
 
 ```
 cobradores/{uid}/prestamos/{prestamoId}
-cobradores/{uid}/prestamos/{prestamoId}/pagos/{fecha}
+cobradores/{uid}/prestamos/{prestamoId}/pagos/{cuota_NN}
 ```
 
-- El **préstamo** guarda: cliente, monto, interés, plan, total calculado y valor de cada cuota.
-- Cada **pago** se guarda con el ID igual a la fecha (`2026-09-13`). Esto es clave: si el teléfono pierde señal a mitad de una subida y reintenta, el pago de ese día simplemente sobreescribe el mismo documento — nunca se duplica ni se cobra dos veces.
-- El progreso (cuotas pagadas, fecha estimada de vencimiento) se calcula contando esos documentos, nunca con un contador que se pueda desincronizar.
-- Si un cliente se atrasa, esa cuota queda pendiente en la cuenta y la fecha de vencimiento estimada se recalcula sola corriéndose hacia adelante.
+- El **préstamo** guarda: cliente, monto, interés, plan, total calculado, valor de cada cuota y fecha de inicio.
+- Cada **pago** se guarda con el ID igual al número de cuota (`cuota_01`, `cuota_02`, …), no a la fecha en que se cobró. Esto es clave por dos razones: si el teléfono pierde señal a mitad de una subida y reintenta, marcar la misma cuota dos veces sobreescribe el mismo documento — nunca se duplica; y desmarcar una cuota (por error) es simplemente borrar ese documento, sin dejar rastro.
+- Cada cuota tiene una **fecha nominal** calculada (fecha de inicio + (número de cuota − 1) × el período del plan). Esa fecha es la que decide en qué sección del panel aparece el cliente: si la próxima cuota pendiente cae antes de hoy va a "Atrasados", si cae hoy va a "Cobrar hoy", si es mañana va a "Cobrar mañana", y si es más adelante va a "Al día". Todo esto se recalcula solo, sin ningún contador que se pueda desincronizar — se basa en contar qué documentos `cuota_NN` existen.
+- El cronograma completo de cada cliente (todas las cuotas, pagadas o no) se ve entrando a "Ver cronograma" desde su tarjeta; ahí se puede marcar y desmarcar cualquier cuota individualmente, no solo la de hoy.
 
 ## Qué falta antes de venderla a varios cobradores
 
-- Íconos reales para `manifest.json` (`icon-192.png`, `icon-512.png`) — por ahora no están incluidos.
-- Pantalla para editar/eliminar un préstamo o cliente.
+- Pantalla para editar/eliminar un préstamo o cliente completo (hoy se puede corregir cuota por cuota, pero no borrar el préstamo entero desde la app).
 - Si quieres reportes (total cobrado por día, mora, etc.) se pueden agregar sin tocar el modelo de datos, ya que todo se puede calcular a partir de los pagos guardados.

@@ -119,14 +119,59 @@ input, select {
 .preview { font-size: 13px; color: #1d4ed8; font-weight: 600; margin-top: 6px; }
 
 .detalle-info { padding: 0 16px; color: #555; font-size: 14px; }
-.historial { list-style: none; padding: 0 16px; margin: 8px 0; }
-.historial li {
+.detalle-resumen { padding: 10px 16px; margin: 0 16px 8px; background: #eef2ff; border-radius: 10px; font-size: 13px; color: #3730a3; font-weight: 600; }
+h3 { padding: 0 16px; margin: 18px 0 4px; }
+.nota-cuotas { padding: 0 16px; margin: 0 0 10px; font-size: 12px; color: #888; }
+
+.cuotas-grid { list-style: none; padding: 0 16px 100px; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.cuota-fila {
+  display: flex; align-items: center; justify-content: space-between;
   background: #fff;
-  padding: 10px 12px;
+  padding: 10px 14px;
   border-radius: 10px;
-  margin-bottom: 6px;
   font-size: 14px;
+  cursor: pointer;
+  border: 1px solid transparent;
 }
+.cuota-fila.pagada { background: #f0fdf4; border-color: #bbf7d0; }
+.cuota-fila.atrasada { background: #fef2f2; border-color: #fecaca; }
+.cuota-num { font-weight: 600; color: #444; width: 32px; }
+.cuota-fecha { flex: 1; color: #666; }
+.cuota-estado { font-weight: 600; font-size: 13px; }
+.cuota-fila.pagada .cuota-estado { color: #16a34a; }
+.cuota-fila.atrasada .cuota-estado { color: #dc2626; }
+.cuota-fila.pendiente .cuota-estado { color: #94a3b8; }
+
+/* ---- Secciones del panel de clientes ---- */
+.seccion-titulo {
+  padding: 4px 16px 6px;
+  margin-top: 14px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.seccion-titulo .punto { width: 9px; height: 9px; border-radius: 999px; display: inline-block; }
+.seccion-titulo .cuenta { font-weight: 500; color: #888; text-transform: none; letter-spacing: 0; }
+.seccion-atrasado .punto { background: #dc2626; }
+.seccion-atrasado { color: #b91c1c; }
+.seccion-hoy .punto { background: #d97706; }
+.seccion-hoy { color: #b45309; }
+.seccion-manana .punto { background: #2563eb; }
+.seccion-manana { color: #1d4ed8; }
+.seccion-al_dia .punto { background: #16a34a; }
+.seccion-al_dia { color: #15803d; }
+.seccion-completado .punto { background: #94a3b8; }
+.seccion-completado { color: #64748b; }
+
+.tarjeta.atrasado { border-left: 4px solid #dc2626; }
+.tarjeta.hoy { border-left: 4px solid #d97706; }
+.tarjeta.manana { border-left: 4px solid #2563eb; }
+.tarjeta.al_dia { border-left: 4px solid #16a34a; }
+.tarjeta.completado { border-left: 4px solid #94a3b8; opacity: .85; }
 
 @media (min-width: 480px) {
   .lista { max-width: 480px; margin: 0 auto; }

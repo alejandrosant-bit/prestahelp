@@ -21,7 +21,7 @@ import {
   collection,
   doc,
   setDoc,
-  getDocs,
+  deleteDoc,
   query,
   orderBy,
   serverTimestamp,
@@ -70,15 +70,29 @@ function fechaISO(d) {
 }
 
 function sumarDias(fechaBase, dias) {
-  const d = new Date(fechaBase);
+  const d = new Date(fechaBase + "T00:00:00");
   d.setDate(d.getDate() + dias);
-  return d;
+  return fechaISO(d);
 }
 
 function formatoBonito(fechaISOStr) {
   if (!fechaISOStr) return "";
   const [y, m, d] = fechaISOStr.split("-");
   return `${d}/${m}/${y}`;
+}
+
+// ID determinístico por número de cuota: marcar/desmarcar la misma
+// cuota siempre escribe o borra el mismo documento — así nunca se
+// duplica un pago, sea cual sea el orden en que se marquen o el
+// número de veces que se reintente por cortes de señal.
+function idCuota(numero) {
+  return "cuota_" + String(numero).padStart(2, "0");
+}
+
+// Fecha "nominal" de una cuota: la fecha en la que le tocaría caer
+// según el plan, contando desde la fecha de inicio.
+function fechaNominalCuota(fechaInicio, periodoDias, numero) {
+  return sumarDias(fechaInicio, (numero - 1) * periodoDias);
 }
 
 // Deja solo dígitos en el teléfono para armar el link de WhatsApp
@@ -94,15 +108,53 @@ function linkWhatsapp(telefono, nombreCliente) {
   return `https://wa.me/${digitos}?text=${mensaje}`;
 }
 
+// Con el conjunto de cuotas ya pagadas, calcula la próxima cuota
+// pendiente (la primera que falte, no necesariamente la siguiente en
+// número si alguna quedó desmarcada) y en qué categoría cae el
+// cliente: atrasado / hoy / mañana / al día / completado.
+function clasificarPrestamo(p, pagadasSet) {
+  let proximaCuota = null;
+  for (let n = 1; n <= p.numCuotas; n++) {
+    if (!pagadasSet.has(n)) {
+      proximaCuota = n;
+      break;
+    }
+  }
+  const pagados = pagadasSet.size;
+
+  if (proximaCuota === null) {
+    return { categoria: "completado", pagados, proximaCuota: null, proximaFecha: null };
+  }
+
+  const proximaFecha = fechaNominalCuota(p.fechaInicio, p.periodoDias, proximaCuota);
+  const hoy = fechaISO(new Date());
+  const manana = sumarDias(hoy, 1);
+
+  let categoria;
+  if (proximaFecha < hoy) categoria = "atrasado";
+  else if (proximaFecha === hoy) categoria = "hoy";
+  else if (proximaFecha === manana) categoria = "manana";
+  else categoria = "al_dia";
+
+  return { categoria, pagados, proximaCuota, proximaFecha };
+}
+
+const SECCIONES = [
+  { key: "atrasado", titulo: "Atrasados" },
+  { key: "hoy", titulo: "Cobrar hoy" },
+  { key: "manana", titulo: "Cobrar mañana" },
+  { key: "al_dia", titulo: "Al día" },
+  { key: "completado", titulo: "Completados" },
+];
+
 // ------------------------------------------------------------
 // Estado en memoria
 // ------------------------------------------------------------
 let cobradorId = null;
 let unsubPrestamos = null;
 let unsubDetalle = null;
-// listeners de progreso de cada tarjeta (para poder cerrarlos al
-// re-renderizar la lista y que no se acumulen)
-let unsubsProgreso = [];
+// Un préstamo por entrada: { p, pagadasSet, cargado, unsubPagos }
+const prestamos = new Map();
 
 // ------------------------------------------------------------
 // Referencias del DOM
@@ -159,7 +211,7 @@ onAuthStateChanged(auth, (user) => {
     vistaLogin.classList.remove("oculto");
     if (unsubPrestamos) unsubPrestamos();
     if (unsubDetalle) unsubDetalle();
-    limpiarListenersProgreso();
+    limpiarPrestamos();
   }
 });
 
@@ -213,8 +265,7 @@ function actualizarPreview() {
     return;
   }
   const { montoTotal, numCuotas, periodoDias, valorCuota } = calcularPrestamo({ monto, interesPct, plan });
-  const vencimiento = sumarDias(fechaInicio, numCuotas * periodoDias);
-  npFechaFin.value = fechaISO(vencimiento);
+  npFechaFin.value = sumarDias(fechaInicio, numCuotas * periodoDias);
   previewCalculo.textContent =
     `Total a pagar: ${miles(montoTotal)} — ${numCuotas} cuotas de ${miles(valorCuota)} cada una`;
 }
@@ -255,11 +306,13 @@ formNuevoPrestamo.addEventListener("submit", async (e) => {
 });
 
 // ------------------------------------------------------------
-// Lista de préstamos (tiempo real, funciona con caché offline)
+// Lista de préstamos, dividida en secciones (atrasados / hoy /
+// mañana / al día / completados) — todo en tiempo real, incluso
+// con la caché offline.
 // ------------------------------------------------------------
-function limpiarListenersProgreso() {
-  unsubsProgreso.forEach((fn) => fn());
-  unsubsProgreso = [];
+function limpiarPrestamos() {
+  prestamos.forEach((entry) => entry.unsubPagos && entry.unsubPagos());
+  prestamos.clear();
 }
 
 function suscribirPrestamos() {
@@ -268,89 +321,137 @@ function suscribirPrestamos() {
     orderBy("creadoEn", "desc")
   );
   unsubPrestamos = onSnapshot(q, (snap) => {
-    limpiarListenersProgreso();
-    listaPrestamos.innerHTML = "";
+    const idsVistos = new Set();
     snap.forEach((docSnap) => {
+      const id = docSnap.id;
+      idsVistos.add(id);
       const p = docSnap.data();
-      listaPrestamos.appendChild(renderTarjetaPrestamo(docSnap.id, p));
+      if (!prestamos.has(id)) {
+        const entry = { p, pagadasSet: new Set(), cargado: false, unsubPagos: null };
+        prestamos.set(id, entry);
+        entry.unsubPagos = onSnapshot(
+          collection(db, "cobradores", cobradorId, "prestamos", id, "pagos"),
+          (pagosSnap) => {
+            const nuevoSet = new Set();
+            pagosSnap.forEach((d) => {
+              const n = parseInt(d.id.replace("cuota_", ""), 10);
+              if (!isNaN(n)) nuevoSet.add(n);
+            });
+            entry.pagadasSet = nuevoSet;
+            entry.cargado = true;
+            renderLista();
+          }
+        );
+      } else {
+        prestamos.get(id).p = p;
+      }
     });
-    if (snap.empty) {
-      listaPrestamos.innerHTML = `<p class="vacio">Todavía no tienes préstamos. Toca "+ Nuevo préstamo" para crear el primero.</p>`;
+    // Limpia préstamos que ya no están (por si se borra uno)
+    for (const id of Array.from(prestamos.keys())) {
+      if (!idsVistos.has(id)) {
+        const entry = prestamos.get(id);
+        if (entry.unsubPagos) entry.unsubPagos();
+        prestamos.delete(id);
+      }
     }
+    renderLista();
   });
 }
 
-function renderTarjetaPrestamo(id, p) {
+function renderLista() {
+  const grupos = { atrasado: [], hoy: [], manana: [], al_dia: [], completado: [], cargando: [] };
+
+  prestamos.forEach((entry, id) => {
+    if (!entry.cargado) {
+      grupos.cargando.push({ id, entry });
+      return;
+    }
+    const clasif = clasificarPrestamo(entry.p, entry.pagadasSet);
+    grupos[clasif.categoria].push({ id, entry, clasif });
+  });
+
+  listaPrestamos.innerHTML = "";
+
+  if (prestamos.size === 0) {
+    listaPrestamos.innerHTML = `<p class="vacio">Todavía no tienes préstamos. Toca "+ Nuevo préstamo" para crear el primero.</p>`;
+    return;
+  }
+
+  SECCIONES.forEach(({ key, titulo }) => {
+    const items = grupos[key];
+    if (!items || items.length === 0) return;
+
+    const h = document.createElement("div");
+    h.className = `seccion-titulo seccion-${key}`;
+    h.innerHTML = `<span class="punto"></span> ${titulo} <span class="cuenta">(${items.length})</span>`;
+    listaPrestamos.appendChild(h);
+
+    items.forEach(({ id, entry, clasif }) => {
+      listaPrestamos.appendChild(renderTarjetaPrestamo(id, entry.p, clasif));
+    });
+  });
+}
+
+function renderTarjetaPrestamo(id, p, clasif) {
   const div = document.createElement("div");
-  div.className = "tarjeta";
+  div.className = `tarjeta ${clasif.categoria}`;
   const wa = linkWhatsapp(p.clienteTelefono, p.clienteNombre);
+
+  let lineaEstado;
+  if (clasif.categoria === "completado") {
+    lineaEstado = `✅ Completado (${clasif.pagados}/${p.numCuotas})`;
+  } else {
+    const etiqueta =
+      clasif.categoria === "atrasado" ? "Atrasado desde" :
+      clasif.categoria === "hoy" ? "Cobrar hoy" :
+      clasif.categoria === "manana" ? "Cobrar mañana" : "Próximo cobro";
+    lineaEstado = `${etiqueta}: ${formatoBonito(clasif.proximaFecha)} · Cuota ${clasif.proximaCuota}/${p.numCuotas}`;
+  }
+
   div.innerHTML = `
     <div class="tarjeta-header">
       <strong>${p.clienteNombre}</strong>
       <span class="plan-chip">${PLANES[p.plan]?.nombre ?? p.plan}</span>
     </div>
     <div class="tarjeta-info">Monto: ${miles(p.monto)} · Total: ${miles(p.montoTotal)} · Cuota: ${miles(p.valorCuota)}</div>
-    <div class="tarjeta-info">Inicio: ${formatoBonito(p.fechaInicio)}</div>
-    <div class="tarjeta-info" data-progreso>Cargando progreso…</div>
+    <div class="tarjeta-info">${lineaEstado}</div>
     <div class="tarjeta-acciones">
-      <button type="button" class="btn btn-pagar" data-id="${id}">Marcar pago de hoy</button>
-      <button type="button" class="btn btn-secundario" data-ver="${id}">Ver historial</button>
+      ${clasif.categoria !== "completado" ? `<button type="button" class="btn btn-pagar" data-id="${id}">Marcar cuota ${clasif.proximaCuota}</button>` : ""}
+      <button type="button" class="btn btn-secundario" data-ver="${id}">Ver cronograma</button>
       ${wa ? `<a class="btn btn-whatsapp" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
     </div>
   `;
-  const elProgreso = div.querySelector("[data-progreso]");
   const btnPagar = div.querySelector(".btn-pagar");
-  suscribirProgreso(id, p, elProgreso, btnPagar);
-  btnPagar.addEventListener("click", () => marcarPagoHoy(id, p));
+  if (btnPagar) {
+    btnPagar.addEventListener("click", () => marcarCuota(id, clasif.proximaCuota, p.valorCuota));
+  }
   div.querySelector("[data-ver]").addEventListener("click", () => mostrarDetalle(id, p));
   return div;
 }
 
-// Progreso en tiempo real: se suscribe a la subcolección de pagos, así
-// que en cuanto se marca un pago (aunque sea offline) el contador y el
-// botón se actualizan solos sin tener que recargar nada.
-function suscribirProgreso(prestamoId, p, elProgreso, btnPagar) {
-  const hoyId = fechaISO(new Date());
-  const unsub = onSnapshot(
-    collection(db, "cobradores", cobradorId, "prestamos", prestamoId, "pagos"),
-    (snap) => {
-      const pagados = snap.size;
-      const yaPagoHoy = snap.docs.some((d) => d.id === hoyId);
-      const faltantes = Math.max(p.numCuotas - pagados, 0);
-      const vencimientoEstimado = fechaISO(sumarDias(new Date(), faltantes * p.periodoDias));
-
-      if (faltantes === 0) {
-        elProgreso.textContent = `✅ Préstamo completado (${pagados}/${p.numCuotas})`;
-        btnPagar.disabled = true;
-        btnPagar.textContent = "Completado";
-      } else {
-        elProgreso.textContent = `Cuotas: ${pagados}/${p.numCuotas} · Vence aprox. ${formatoBonito(vencimientoEstimado)}`;
-        btnPagar.disabled = yaPagoHoy;
-        btnPagar.textContent = yaPagoHoy ? "✓ Ya pagó hoy" : "Marcar pago de hoy";
-      }
-    }
-  );
-  unsubsProgreso.push(unsub);
-}
-
 // ------------------------------------------------------------
-// Marcar el pago de hoy — ID determinístico por fecha, así una
-// escritura repetida (por reintento de red) sobreescribe el mismo
-// documento en lugar de crear un pago duplicado.
+// Marcar / desmarcar una cuota. El ID del documento es siempre el
+// mismo para una cuota dada, así que marcarla dos veces (por un
+// reintento offline) no duplica nada, y desmarcarla simplemente
+// borra ese mismo documento — que es exactamente lo mismo que
+// "eliminar el pago" en caso de un error.
 // ------------------------------------------------------------
-async function marcarPagoHoy(prestamoId, p) {
-  const hoyId = fechaISO(new Date());
-  const ref = doc(db, "cobradores", cobradorId, "prestamos", prestamoId, "pagos", hoyId);
+async function marcarCuota(prestamoId, numero, valorCuota) {
+  const ref = doc(db, "cobradores", cobradorId, "prestamos", prestamoId, "pagos", idCuota(numero));
   await setDoc(ref, {
-    monto: p.valorCuota,
-    fecha: hoyId,
+    numero,
+    monto: valorCuota,
     registradoEn: serverTimestamp(),
   });
-  // el listener de suscribirProgreso se encarga de refrescar la tarjeta sola
+}
+
+async function desmarcarCuota(prestamoId, numero) {
+  const ref = doc(db, "cobradores", cobradorId, "prestamos", prestamoId, "pagos", idCuota(numero));
+  await deleteDoc(ref);
 }
 
 // ------------------------------------------------------------
-// Detalle / historial de un préstamo
+// Detalle / cronograma completo de un préstamo
 // ------------------------------------------------------------
 btnVolverLista.addEventListener("click", () => {
   vistaDetalle.classList.add("oculto");
@@ -372,20 +473,45 @@ function mostrarDetalle(prestamoId, p) {
     ? `<a class="btn btn-whatsapp grande" href="${wa}" target="_blank" rel="noopener">Escribirle por WhatsApp</a>`
     : "";
 
-  const listaHistorial = $("#detalle-historial");
-  listaHistorial.innerHTML = "Cargando…";
+  const contCuotas = $("#detalle-cuotas");
+  const contResumen = $("#detalle-resumen");
+  contCuotas.innerHTML = "Cargando…";
 
   unsubDetalle = onSnapshot(
-    query(collection(db, "cobradores", cobradorId, "prestamos", prestamoId, "pagos"), orderBy("fecha", "desc")),
+    collection(db, "cobradores", cobradorId, "prestamos", prestamoId, "pagos"),
     (snap) => {
-      listaHistorial.innerHTML = "";
+      const pagadasSet = new Set();
       snap.forEach((d) => {
-        const pago = d.data();
-        const li = document.createElement("li");
-        li.textContent = `${formatoBonito(pago.fecha)} — pagó ${miles(pago.monto)}`;
-        listaHistorial.appendChild(li);
+        const n = parseInt(d.id.replace("cuota_", ""), 10);
+        if (!isNaN(n)) pagadasSet.add(n);
       });
-      if (snap.empty) listaHistorial.innerHTML = "<li>Sin pagos registrados todavía.</li>";
+
+      const clasif = clasificarPrestamo(p, pagadasSet);
+      contResumen.textContent =
+        clasif.categoria === "completado"
+          ? `Préstamo completado — ${pagadasSet.size}/${p.numCuotas} cuotas pagadas`
+          : `${pagadasSet.size}/${p.numCuotas} cuotas pagadas · Próxima: cuota ${clasif.proximaCuota} (${formatoBonito(clasif.proximaFecha)})`;
+
+      const hoy = fechaISO(new Date());
+      contCuotas.innerHTML = "";
+      for (let n = 1; n <= p.numCuotas; n++) {
+        const pagada = pagadasSet.has(n);
+        const fechaNom = fechaNominalCuota(p.fechaInicio, p.periodoDias, n);
+        const atrasada = !pagada && fechaNom < hoy;
+
+        const fila = document.createElement("div");
+        fila.className = `cuota-fila ${pagada ? "pagada" : atrasada ? "atrasada" : "pendiente"}`;
+        fila.innerHTML = `
+          <span class="cuota-num">#${n}</span>
+          <span class="cuota-fecha">${formatoBonito(fechaNom)}</span>
+          <span class="cuota-estado">${pagada ? "✓ Pagada" : atrasada ? "Atrasada" : "Pendiente"}</span>
+        `;
+        fila.addEventListener("click", () => {
+          if (pagada) desmarcarCuota(prestamoId, n);
+          else marcarCuota(prestamoId, n, p.valorCuota);
+        });
+        contCuotas.appendChild(fila);
+      }
     }
   );
 }

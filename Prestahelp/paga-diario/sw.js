@@ -2,7 +2,7 @@
 // abra instantáneo y sin errores aunque no haya internet. Los DATOS
 // (préstamos, pagos) NO pasan por aquí — de eso se encarga la caché
 // local de Firestore, que es más robusta para sincronizar.
-const CACHE_NAME = "prestahelp-v2";
+const CACHE_NAME = "prestahelp-v3";
 const ARCHIVOS = [
   "./index.html",
   "./styles.css",
