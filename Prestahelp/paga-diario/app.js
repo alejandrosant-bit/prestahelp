@@ -59,23 +59,23 @@ function calcularPrestamo({ monto, interesPct, plan }) {
 }
 
 // ------------------------------------------------------------
-// Formato de números y fechas (todo en "unidades de mil" con
-// separador de miles, excepto el teléfono, que se deja tal cual)
+// Formato de números y fechas (todo en pesos, con separador de
+// miles, excepto el teléfono, que se deja tal cual)
 // ------------------------------------------------------------
 function miles(n) {
-  return Math.round(n).toLocaleString("es-VE");
+  return "$" + Math.round(n).toLocaleString("es-CO");
 }
 
 // ------------------------------------------------------------
 // Formato de miles EN VIVO mientras se escribe un monto, para que
-// no se pasen o falten ceros al ingresarlo (ej. "500.000" en vez de
+// no se pasen o falten ceros al ingresarlo (ej. "$500.000" en vez de
 // "500000", donde un cero de más o de menos es fácil de pasar por
 // alto). El campo se ve siempre formateado; para calcular se le
-// quitan los puntos y se convierte a número.
+// quitan el símbolo y los puntos y se convierte a número.
 function formatearInputMiles(valorCrudo) {
   const digitos = (valorCrudo || "").replace(/\D/g, "");
   if (!digitos) return "";
-  return Number(digitos).toLocaleString("es-VE");
+  return "$" + Number(digitos).toLocaleString("es-CO");
 }
 
 function numeroDesdeInputMiles(valorFormateado) {
