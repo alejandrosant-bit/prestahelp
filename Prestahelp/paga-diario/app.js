@@ -66,6 +66,23 @@ function miles(n) {
   return Math.round(n).toLocaleString("es-VE");
 }
 
+// ------------------------------------------------------------
+// Formato de miles EN VIVO mientras se escribe un monto, para que
+// no se pasen o falten ceros al ingresarlo (ej. "500.000" en vez de
+// "500000", donde un cero de más o de menos es fácil de pasar por
+// alto). El campo se ve siempre formateado; para calcular se le
+// quitan los puntos y se convierte a número.
+function formatearInputMiles(valorCrudo) {
+  const digitos = (valorCrudo || "").replace(/\D/g, "");
+  if (!digitos) return "";
+  return Number(digitos).toLocaleString("es-VE");
+}
+
+function numeroDesdeInputMiles(valorFormateado) {
+  const digitos = (valorFormateado || "").replace(/\D/g, "");
+  return digitos ? Number(digitos) : NaN;
+}
+
 function fechaISO(d) {
   return d.toISOString().slice(0, 10); // YYYY-MM-DD
 }
@@ -90,10 +107,29 @@ function idCuota(numero) {
   return "cuota_" + String(numero).padStart(2, "0");
 }
 
+// El cobrador nunca cobra los domingos — ese día no cuenta para nada
+// del préstamo. Si una fecha cae domingo, se corre al lunes.
+function esDomingo(fechaISOStr) {
+  return new Date(fechaISOStr + "T00:00:00").getDay() === 0;
+}
+
+function saltarDomingo(fechaISOStr) {
+  let f = fechaISOStr;
+  while (esDomingo(f)) f = sumarDias(f, 1);
+  return f;
+}
+
 // Fecha "nominal" de una cuota: la fecha en la que le tocaría caer
-// según el plan, contando desde la fecha de inicio.
+// según el plan, contando desde la fecha de inicio, saltándose
+// siempre los domingos (si un pago cayera domingo, pasa al lunes).
+// Se calcula cuota por cuota (no con una sola resta) porque saltar
+// domingos no es una simple multiplicación.
 function fechaNominalCuota(fechaInicio, periodoDias, numero) {
-  return sumarDias(fechaInicio, (numero - 1) * periodoDias);
+  let fecha = saltarDomingo(fechaInicio);
+  for (let i = 2; i <= numero; i++) {
+    fecha = saltarDomingo(sumarDias(fecha, periodoDias));
+  }
+  return fecha;
 }
 
 // Deja solo dígitos en el teléfono para armar el link de WhatsApp
@@ -241,32 +277,52 @@ function traducirErrorAuth(err) {
 // ------------------------------------------------------------
 // Nuevo préstamo
 // ------------------------------------------------------------
+// Si el cobrador toca a mano el campo de fecha de finalización, ya no
+// se la volvemos a pisar automáticamente cuando cambie el monto, el
+// interés o el plan — se respeta lo que él decidió.
+let fechaFinTocadaManualmente = false;
+npFechaFin.addEventListener("input", () => {
+  fechaFinTocadaManualmente = true;
+});
+
 btnNuevo.addEventListener("click", () => {
   formNuevoPrestamo.reset();
   npFechaInicio.value = fechaISO(new Date());
   npFechaFin.value = "";
+  fechaFinTocadaManualmente = false;
   previewCalculo.textContent = "";
   modalNuevo.classList.remove("oculto");
 });
 btnCerrarModal.addEventListener("click", () => modalNuevo.classList.add("oculto"));
 
 function leerFormularioPrestamo() {
-  const monto = parseFloat($("#np-monto").value);
+  const monto = numeroDesdeInputMiles($("#np-monto").value);
   const interesPct = parseFloat($("#np-interes").value);
   const plan = $("#np-plan").value;
   const fechaInicio = npFechaInicio.value || fechaISO(new Date());
   return { monto, interesPct, plan, fechaInicio };
 }
 
+// Mientras se escribe el monto, lo reformatea con separador de miles
+// en vivo (ej. escribe "500000" y se ve "500.000").
+$("#np-monto").addEventListener("input", (e) => {
+  e.target.value = formatearInputMiles(e.target.value);
+});
+
 function actualizarPreview() {
   const { monto, interesPct, plan, fechaInicio } = leerFormularioPrestamo();
   if (!monto || isNaN(interesPct) || !plan) {
     previewCalculo.textContent = "";
-    npFechaFin.value = "";
+    if (!fechaFinTocadaManualmente) npFechaFin.value = "";
     return;
   }
   const { montoTotal, numCuotas, periodoDias, valorCuota } = calcularPrestamo({ monto, interesPct, plan });
-  npFechaFin.value = sumarDias(fechaInicio, numCuotas * periodoDias);
+  // Misma lógica que el cronograma real: la fecha de la última cuota,
+  // saltándose domingos (el cobrador no cobra ese día). Si el cobrador
+  // ya la cambió a mano, no se la volvemos a calcular encima.
+  if (!fechaFinTocadaManualmente) {
+    npFechaFin.value = fechaNominalCuota(fechaInicio, periodoDias, numCuotas);
+  }
   previewCalculo.textContent =
     `Total a pagar: ${miles(montoTotal)} — ${numCuotas} cuotas de ${miles(valorCuota)} cada una`;
 }
@@ -283,6 +339,8 @@ formNuevoPrestamo.addEventListener("submit", async (e) => {
   if (!nombreCliente || !monto || isNaN(interesPct) || !plan) return;
 
   const { montoTotal, numCuotas, periodoDias, valorCuota } = calcularPrestamo({ monto, interesPct, plan });
+  // Si el cobrador la dejó en blanco por error, se recalcula sola.
+  const fechaFin = npFechaFin.value || fechaNominalCuota(fechaInicio, periodoDias, numCuotas);
 
   // ID determinístico para el préstamo también evita duplicados si el
   // formulario se reenvía por error mientras no hay señal.
@@ -300,6 +358,8 @@ formNuevoPrestamo.addEventListener("submit", async (e) => {
     periodoDias,
     valorCuota,
     fechaInicio,
+    fechaFin,
+    fechaFinManual: fechaFinTocadaManualmente,
     estado: "activo",
     creadoEn: serverTimestamp(),
   });
@@ -568,8 +628,9 @@ function mostrarDetalle(prestamoId, p) {
   vistaApp.classList.add("oculto");
   vistaDetalle.classList.remove("oculto");
   $("#detalle-titulo").textContent = p.clienteNombre;
+  const fechaFinMostrar = p.fechaFin || fechaNominalCuota(p.fechaInicio, p.periodoDias, p.numCuotas);
   $("#detalle-info").textContent =
-    `Plan: ${PLANES[p.plan]?.nombre} · Monto: ${miles(p.monto)} · Interés: ${p.interesPct}% · Total: ${miles(p.montoTotal)} · Inicio: ${formatoBonito(p.fechaInicio)}`;
+    `Plan: ${PLANES[p.plan]?.nombre} · Monto: ${miles(p.monto)} · Interés: ${p.interesPct}% · Total: ${miles(p.montoTotal)} · Inicio: ${formatoBonito(p.fechaInicio)} · Fin: ${formatoBonito(fechaFinMostrar)}`;
 
   const contWa = $("#detalle-whatsapp-cont");
   const wa = linkWhatsapp(p.clienteTelefono, p.clienteNombre);

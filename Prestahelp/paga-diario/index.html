@@ -68,7 +68,7 @@
       </div>
       <p class="nota-tel">Con Venezuela o Colombia elegidos, escribe el número sin el 0 inicial (ej. 4141234567). Con "Otro", escribe el número completo incluyendo su código de país.</p>
       <label>Monto prestado</label>
-      <input id="np-monto" type="number" min="1" required />
+      <input id="np-monto" type="text" inputmode="numeric" autocomplete="off" required />
       <label>Interés (%)</label>
       <input id="np-interes" type="number" min="0" step="0.1" required />
       <label>Plan de pago</label>
@@ -81,7 +81,8 @@
       <label>Fecha de inicio</label>
       <input id="np-fecha-inicio" type="date" required />
       <label>Fecha de finalización (estimada)</label>
-      <input id="np-fecha-fin" type="date" disabled />
+      <input id="np-fecha-fin" type="date" />
+      <p class="nota-tel">Se calcula sola según el plan, pero puedes cambiarla a mano si acordaste otra fecha con el cliente.</p>
       <p id="preview-calculo" class="preview"></p>
       <button type="submit" class="btn btn-primario">Guardar préstamo</button>
     </form>
