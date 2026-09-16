@@ -129,6 +129,7 @@ h3 { padding: 0 16px; margin: 18px 0 4px; }
 .nota-cuotas { padding: 0 16px; margin: 0 0 10px; font-size: 12px; color: #888; }
 
 .cuotas-grid { list-style: none; padding: 0 16px 100px; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.cuota-fila-cont { display: flex; flex-direction: column; }
 .cuota-fila {
   display: flex; align-items: center; justify-content: space-between;
   background: #fff;
@@ -137,6 +138,7 @@ h3 { padding: 0 16px; margin: 18px 0 4px; }
   font-size: 14px;
   cursor: pointer;
   border: 1px solid transparent;
+  gap: 8px;
 }
 .cuota-fila.pagada { background: #f0fdf4; border-color: #bbf7d0; }
 .cuota-fila.atrasada { background: #fef2f2; border-color: #fecaca; }
@@ -146,6 +148,24 @@ h3 { padding: 0 16px; margin: 18px 0 4px; }
 .cuota-fila.pagada .cuota-estado { color: #16a34a; }
 .cuota-fila.atrasada .cuota-estado { color: #dc2626; }
 .cuota-fila.pendiente .cuota-estado { color: #94a3b8; }
+.btn-nota {
+  background: transparent;
+  border: none;
+  font-size: 16px;
+  padding: 2px 4px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  line-height: 1;
+}
+.cuota-nota {
+  font-size: 12px;
+  color: #92400e;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin: -2px 0 2px;
+}
 
 /* ---- Secciones del panel de clientes ---- */
 .seccion-titulo {

@@ -529,6 +529,32 @@ async function desmarcarCuota(prestamoId, numero) {
 }
 
 // ------------------------------------------------------------
+// Nota / observación por cuota (independiente de si está pagada o
+// no) — para casos como un abono parcial, una promesa de pago, etc.
+// Se guarda en su propia subcolección para no mezclarse con el
+// registro de pago (que es lo que decide si la cuota cuenta como
+// pagada). El mismo ID determinístico evita duplicados offline.
+// ------------------------------------------------------------
+async function guardarNotaCuota(prestamoId, numero, texto) {
+  const ref = doc(db, "cobradores", cobradorId, "prestamos", prestamoId, "notas", idCuota(numero));
+  const limpio = (texto || "").trim();
+  if (!limpio) {
+    await deleteDoc(ref);
+  } else {
+    await setDoc(ref, { texto: limpio, actualizadoEn: serverTimestamp() });
+  }
+}
+
+function pedirNotaCuota(prestamoId, numero, notaActual) {
+  const nueva = prompt(
+    `Nota / observación para la cuota #${numero} (por ejemplo, "abonó 5.000, falta el resto"). Déjalo vacío para borrar la nota:`,
+    notaActual || ""
+  );
+  if (nueva === null) return; // canceló
+  guardarNotaCuota(prestamoId, numero, nueva);
+}
+
+// ------------------------------------------------------------
 // Detalle / cronograma completo de un préstamo
 // ------------------------------------------------------------
 btnVolverLista.addEventListener("click", () => {
@@ -555,43 +581,78 @@ function mostrarDetalle(prestamoId, p) {
   const contResumen = $("#detalle-resumen");
   contCuotas.innerHTML = "Cargando…";
 
-  unsubDetalle = onSnapshot(
+  // Guardamos el último snapshot de pagos y de notas para poder
+  // volver a dibujar el cronograma cuando cambie cualquiera de los
+  // dos (son dos listeners independientes).
+  let pagadasSet = new Set();
+  let notasMap = new Map(); // numero -> texto
+
+  function repintar() {
+    const clasif = clasificarPrestamo(p, pagadasSet);
+    contResumen.textContent =
+      clasif.categoria === "completado"
+        ? `Préstamo completado — ${pagadasSet.size}/${p.numCuotas} cuotas pagadas`
+        : `${pagadasSet.size}/${p.numCuotas} cuotas pagadas · Próxima: cuota ${clasif.proximaCuota} (${formatoBonito(clasif.proximaFecha)})`;
+
+    const hoy = fechaISO(new Date());
+    contCuotas.innerHTML = "";
+    for (let n = 1; n <= p.numCuotas; n++) {
+      const pagada = pagadasSet.has(n);
+      const fechaNom = fechaNominalCuota(p.fechaInicio, p.periodoDias, n);
+      const atrasada = !pagada && fechaNom < hoy;
+      const nota = notasMap.get(n) || "";
+
+      const fila = document.createElement("div");
+      fila.className = `cuota-fila-cont`;
+      fila.innerHTML = `
+        <div class="cuota-fila ${pagada ? "pagada" : atrasada ? "atrasada" : "pendiente"}">
+          <span class="cuota-num">#${n}</span>
+          <span class="cuota-fecha">${formatoBonito(fechaNom)}</span>
+          <span class="cuota-estado">${pagada ? "✓ Pagada" : atrasada ? "Atrasada" : "Pendiente"}</span>
+          <button type="button" class="btn-nota" data-nota="${n}" title="Agregar/editar nota">📝</button>
+        </div>
+        ${nota ? `<div class="cuota-nota">📌 ${nota}</div>` : ""}
+      `;
+      fila.querySelector(".cuota-fila").addEventListener("click", () => {
+        if (pagada) desmarcarCuota(prestamoId, n);
+        else marcarCuota(prestamoId, n, p.valorCuota);
+      });
+      fila.querySelector(".btn-nota").addEventListener("click", (e) => {
+        e.stopPropagation();
+        pedirNotaCuota(prestamoId, n, nota);
+      });
+      contCuotas.appendChild(fila);
+    }
+  }
+
+  const unsubPagos = onSnapshot(
     collection(db, "cobradores", cobradorId, "prestamos", prestamoId, "pagos"),
     (snap) => {
-      const pagadasSet = new Set();
+      pagadasSet = new Set();
       snap.forEach((d) => {
         const n = parseInt(d.id.replace("cuota_", ""), 10);
         if (!isNaN(n)) pagadasSet.add(n);
       });
-
-      const clasif = clasificarPrestamo(p, pagadasSet);
-      contResumen.textContent =
-        clasif.categoria === "completado"
-          ? `Préstamo completado — ${pagadasSet.size}/${p.numCuotas} cuotas pagadas`
-          : `${pagadasSet.size}/${p.numCuotas} cuotas pagadas · Próxima: cuota ${clasif.proximaCuota} (${formatoBonito(clasif.proximaFecha)})`;
-
-      const hoy = fechaISO(new Date());
-      contCuotas.innerHTML = "";
-      for (let n = 1; n <= p.numCuotas; n++) {
-        const pagada = pagadasSet.has(n);
-        const fechaNom = fechaNominalCuota(p.fechaInicio, p.periodoDias, n);
-        const atrasada = !pagada && fechaNom < hoy;
-
-        const fila = document.createElement("div");
-        fila.className = `cuota-fila ${pagada ? "pagada" : atrasada ? "atrasada" : "pendiente"}`;
-        fila.innerHTML = `
-          <span class="cuota-num">#${n}</span>
-          <span class="cuota-fecha">${formatoBonito(fechaNom)}</span>
-          <span class="cuota-estado">${pagada ? "✓ Pagada" : atrasada ? "Atrasada" : "Pendiente"}</span>
-        `;
-        fila.addEventListener("click", () => {
-          if (pagada) desmarcarCuota(prestamoId, n);
-          else marcarCuota(prestamoId, n, p.valorCuota);
-        });
-        contCuotas.appendChild(fila);
-      }
+      repintar();
     }
   );
+
+  const unsubNotas = onSnapshot(
+    collection(db, "cobradores", cobradorId, "prestamos", prestamoId, "notas"),
+    (snap) => {
+      notasMap = new Map();
+      snap.forEach((d) => {
+        const n = parseInt(d.id.replace("cuota_", ""), 10);
+        if (!isNaN(n)) notasMap.set(n, d.data().texto || "");
+      });
+      repintar();
+    }
+  );
+
+  unsubDetalle = () => {
+    unsubPagos();
+    unsubNotas();
+  };
 }
 
 // ------------------------------------------------------------

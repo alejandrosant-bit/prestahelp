@@ -18,6 +18,10 @@ service cloud.firestore {
         match /pagos/{pagoId} {
           allow read, write: if request.auth != null && request.auth.uid == cobradorId;
         }
+
+        match /notas/{notaId} {
+          allow read, write: if request.auth != null && request.auth.uid == cobradorId;
+        }
       }
     }
   }
