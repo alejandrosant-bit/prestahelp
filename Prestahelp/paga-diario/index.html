@@ -57,8 +57,16 @@
     <form id="form-nuevo-prestamo">
       <label>Nombre del cliente</label>
       <input id="np-nombre" required />
-      <label>WhatsApp del cliente (con código de país, ej. 584141234567)</label>
-      <input id="np-telefono" type="tel" placeholder="584141234567" />
+      <label>WhatsApp del cliente</label>
+      <div class="tel-row">
+        <select id="np-tel-codigo">
+          <option value="58">🇻🇪 +58</option>
+          <option value="57">🇨🇴 +57</option>
+          <option value="">Otro</option>
+        </select>
+        <input id="np-telefono" type="tel" placeholder="4141234567" />
+      </div>
+      <p class="nota-tel">Con Venezuela o Colombia elegidos, escribe el número sin el 0 inicial (ej. 4141234567). Con "Otro", escribe el número completo incluyendo su código de país.</p>
       <label>Monto prestado</label>
       <input id="np-monto" type="number" min="1" required />
       <label>Interés (%)</label>

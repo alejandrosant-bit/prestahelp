@@ -277,7 +277,8 @@ function actualizarPreview() {
 formNuevoPrestamo.addEventListener("submit", async (e) => {
   e.preventDefault();
   const nombreCliente = $("#np-nombre").value.trim();
-  const telefonoCliente = $("#np-telefono").value.trim();
+  const codigoPais = $("#np-tel-codigo").value;
+  const telefonoCliente = codigoPais + soloDigitos($("#np-telefono").value);
   const { monto, interesPct, plan, fechaInicio } = leerFormularioPrestamo();
   if (!nombreCliente || !monto || isNaN(interesPct) || !plan) return;
 
