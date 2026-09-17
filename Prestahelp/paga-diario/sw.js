@@ -3,7 +3,7 @@
 // (préstamos, pagos) NO pasan por aquí — de eso se encarga la caché
 // local de Firestore, que es más robusta para sincronizar y sube todo
 // sola en cuanto vuelve la conexión.
-const CACHE_NAME = "prestahelp-v12";
+const CACHE_NAME = "prestahelp-v14";
 const ARCHIVOS = [
   "./",
   "./index.html",

@@ -213,6 +213,21 @@ const vistaDetalle = $("#vista-detalle");
 const btnVolverLista = $("#btn-volver-lista");
 const npFechaInicio = $("#np-fecha-inicio");
 const npFechaFin = $("#np-fecha-fin");
+const modalEditar = $("#modal-editar-prestamo");
+const formEditarPrestamo = $("#form-editar-prestamo");
+const btnCerrarModalEditar = $("#btn-cerrar-modal-editar");
+const previewEditar = $("#preview-editar");
+const epFechaInicio = $("#ep-fecha-inicio");
+const epFechaFin = $("#ep-fecha-fin");
+const btnEditarPrestamo = $("#btn-editar-prestamo");
+const vistaBloqueo = $("#vista-bloqueo");
+const btnDesbloquear = $("#btn-desbloquear");
+const bloqueoError = $("#bloqueo-error");
+const btnSeguridad = $("#btn-seguridad");
+const modalSeguridad = $("#modal-seguridad");
+const btnCerrarSeguridad = $("#btn-cerrar-seguridad");
+const chkBloqueoHuella = $("#chk-bloqueo-huella");
+const seguridadError = $("#seguridad-error");
 
 // ------------------------------------------------------------
 // Indicador de conexión (solo informativo — la app funciona
@@ -233,18 +248,150 @@ window.addEventListener("offline", actualizarBadgeConexion);
 actualizarBadgeConexion();
 
 // ------------------------------------------------------------
+// Bloqueo con huella / rostro (WebAuthn del propio teléfono).
+// Es un bloqueo LOCAL de este dispositivo — no depende de internet ni
+// de un servidor: el teléfono es quien verifica la huella, y aquí solo
+// se guarda si el cobrador activó el bloqueo y con qué credencial. Así
+// aunque la sesión quede guardada, nadie puede abrir la app sin pasar
+// por la huella (o el rostro) configurada en el teléfono.
+// ------------------------------------------------------------
+function claveBloqueo(id) { return `prestahelp_bloqueo_${id}`; }
+function claveCredencial(id) { return `prestahelp_credencial_${id}`; }
+
+function bloqueoActivado() {
+  return (
+    localStorage.getItem(claveBloqueo(cobradorId)) === "1" &&
+    !!localStorage.getItem(claveCredencial(cobradorId))
+  );
+}
+
+async function huellaDisponible() {
+  return !!(
+    window.PublicKeyCredential &&
+    typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === "function" &&
+    (await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable())
+  );
+}
+
+function bufferABase64(buf) {
+  return btoa(String.fromCharCode(...new Uint8Array(buf)));
+}
+function base64ABuffer(b64) {
+  const binario = atob(b64);
+  const bytes = new Uint8Array(binario.length);
+  for (let i = 0; i < binario.length; i++) bytes[i] = binario.charCodeAt(i);
+  return bytes.buffer;
+}
+
+async function registrarHuella() {
+  const cred = await navigator.credentials.create({
+    publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: "Prestahelp" },
+      user: {
+        id: crypto.getRandomValues(new Uint8Array(16)),
+        name: "cobrador",
+        displayName: "Cobrador Prestahelp",
+      },
+      pubKeyCredParams: [
+        { type: "public-key", alg: -7 },
+        { type: "public-key", alg: -257 },
+      ],
+      authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+      timeout: 60000,
+    },
+  });
+  if (!cred) throw new Error("No se pudo registrar la huella");
+  localStorage.setItem(claveCredencial(cobradorId), bufferABase64(cred.rawId));
+  localStorage.setItem(claveBloqueo(cobradorId), "1");
+}
+
+async function verificarHuella() {
+  const idB64 = localStorage.getItem(claveCredencial(cobradorId));
+  if (!idB64) return false;
+  const asercion = await navigator.credentials.get({
+    publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials: [{ id: base64ABuffer(idB64), type: "public-key" }],
+      userVerification: "required",
+      timeout: 60000,
+    },
+  });
+  return !!asercion;
+}
+
+function desactivarBloqueo() {
+  localStorage.removeItem(claveBloqueo(cobradorId));
+  localStorage.removeItem(claveCredencial(cobradorId));
+}
+
+function mostrarBloqueo() {
+  vistaApp.classList.add("oculto");
+  bloqueoError.textContent = "";
+  vistaBloqueo.classList.remove("oculto");
+}
+
+function entrarALaApp() {
+  vistaBloqueo.classList.add("oculto");
+  vistaApp.classList.remove("oculto");
+  suscribirPrestamos();
+}
+
+btnDesbloquear.addEventListener("click", async () => {
+  bloqueoError.textContent = "";
+  try {
+    const ok = await verificarHuella();
+    if (ok) entrarALaApp();
+    else bloqueoError.textContent = "No se pudo verificar. Intenta de nuevo.";
+  } catch (err) {
+    bloqueoError.textContent = "No se pudo verificar la huella. Intenta de nuevo.";
+  }
+});
+
+btnSeguridad.addEventListener("click", () => {
+  seguridadError.textContent = "";
+  chkBloqueoHuella.checked = bloqueoActivado();
+  modalSeguridad.classList.remove("oculto");
+});
+btnCerrarSeguridad.addEventListener("click", () => modalSeguridad.classList.add("oculto"));
+
+chkBloqueoHuella.addEventListener("change", async () => {
+  seguridadError.textContent = "";
+  if (chkBloqueoHuella.checked) {
+    if (!(await huellaDisponible())) {
+      chkBloqueoHuella.checked = false;
+      seguridadError.textContent = "Este teléfono o navegador no tiene huella/rostro configurado.";
+      return;
+    }
+    try {
+      await registrarHuella();
+    } catch (err) {
+      chkBloqueoHuella.checked = false;
+      seguridadError.textContent = "No se pudo activar. Intenta de nuevo.";
+    }
+  } else {
+    desactivarBloqueo();
+  }
+});
+
+// ------------------------------------------------------------
 // Autenticación
 // ------------------------------------------------------------
 onAuthStateChanged(auth, (user) => {
   if (user) {
     cobradorId = user.uid;
     vistaLogin.classList.add("oculto");
-    vistaApp.classList.remove("oculto");
-    suscribirPrestamos();
+    if (bloqueoActivado()) {
+      mostrarBloqueo();
+    } else {
+      vistaApp.classList.remove("oculto");
+      suscribirPrestamos();
+    }
   } else {
     cobradorId = null;
     vistaApp.classList.add("oculto");
     vistaDetalle.classList.add("oculto");
+    vistaBloqueo.classList.add("oculto");
     vistaLogin.classList.remove("oculto");
     if (unsubPrestamos) unsubPrestamos();
     if (unsubDetalle) unsubDetalle();
@@ -365,6 +512,133 @@ formNuevoPrestamo.addEventListener("submit", async (e) => {
   });
 
   modalNuevo.classList.add("oculto");
+});
+
+// ------------------------------------------------------------
+// Editar préstamo — el cobrador puede corregir el nombre, teléfono,
+// monto, interés, plan o fechas de un cliente después de haberlo
+// creado, por si se equivocó o el cliente pidió un cambio. Si cambia
+// monto/interés/plan/fecha de inicio, el cronograma se recalcula
+// solo; los pagos ya marcados quedan igual (se guardan por número de
+// cuota, no se pierden).
+// ------------------------------------------------------------
+let prestamoEditandoId = null;
+let fechaFinEditarTocadaManualmente = false;
+
+// El teléfono se guarda como "códigoDigitos" pegado (ej. "584141234567");
+// al editar, intentamos separar de nuevo el código para mostrarlo en el
+// selector correcto.
+function separarTelefono(telCompleto) {
+  const t = telCompleto || "";
+  if (t.startsWith("58")) return { codigo: "58", resto: t.slice(2) };
+  if (t.startsWith("57")) return { codigo: "57", resto: t.slice(2) };
+  return { codigo: "", resto: t };
+}
+
+function abrirModalEditar(id, p) {
+  prestamoEditandoId = id;
+  fechaFinEditarTocadaManualmente = false;
+  $("#ep-nombre").value = p.clienteNombre || "";
+  const { codigo, resto } = separarTelefono(p.clienteTelefono);
+  $("#ep-tel-codigo").value = codigo;
+  $("#ep-telefono").value = resto;
+  $("#ep-monto").value = formatearInputMiles(String(p.monto || ""));
+  $("#ep-interes").value = p.interesPct;
+  $("#ep-plan").value = p.plan;
+  epFechaInicio.value = p.fechaInicio;
+  epFechaFin.value = p.fechaFin || fechaNominalCuota(p.fechaInicio, p.periodoDias, p.numCuotas);
+  previewEditar.textContent = "";
+  modalEditar.classList.remove("oculto");
+}
+
+btnCerrarModalEditar.addEventListener("click", () => modalEditar.classList.add("oculto"));
+
+epFechaFin.addEventListener("input", () => {
+  fechaFinEditarTocadaManualmente = true;
+});
+
+function leerFormularioEditar() {
+  const monto = numeroDesdeInputMiles($("#ep-monto").value);
+  const interesPct = parseFloat($("#ep-interes").value);
+  const plan = $("#ep-plan").value;
+  const fechaInicio = epFechaInicio.value;
+  return { monto, interesPct, plan, fechaInicio };
+}
+
+$("#ep-monto").addEventListener("input", (e) => {
+  e.target.value = formatearInputMiles(e.target.value);
+});
+
+function actualizarPreviewEditar() {
+  const { monto, interesPct, plan, fechaInicio } = leerFormularioEditar();
+  if (!monto || isNaN(interesPct) || !plan || !fechaInicio) {
+    previewEditar.textContent = "";
+    return;
+  }
+  const { montoTotal, numCuotas, periodoDias, valorCuota } = calcularPrestamo({ monto, interesPct, plan });
+  if (!fechaFinEditarTocadaManualmente) {
+    epFechaFin.value = fechaNominalCuota(fechaInicio, periodoDias, numCuotas);
+  }
+  previewEditar.textContent =
+    `Total a pagar: ${miles(montoTotal)} — ${numCuotas} cuotas de ${miles(valorCuota)} cada una`;
+}
+["ep-monto", "ep-interes", "ep-plan", "ep-fecha-inicio"].forEach((id) =>
+  $("#" + id).addEventListener("input", actualizarPreviewEditar)
+);
+
+formEditarPrestamo.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!prestamoEditandoId) return;
+  const nombreCliente = $("#ep-nombre").value.trim();
+  const codigoPais = $("#ep-tel-codigo").value;
+  const telefonoCliente = codigoPais + soloDigitos($("#ep-telefono").value);
+  const { monto, interesPct, plan, fechaInicio } = leerFormularioEditar();
+  if (!nombreCliente || !monto || isNaN(interesPct) || !plan || !fechaInicio) return;
+
+  const { montoTotal, numCuotas, periodoDias, valorCuota } = calcularPrestamo({ monto, interesPct, plan });
+  const fechaFin = epFechaFin.value || fechaNominalCuota(fechaInicio, periodoDias, numCuotas);
+
+  const ref = doc(db, "cobradores", cobradorId, "prestamos", prestamoEditandoId);
+  await setDoc(
+    ref,
+    {
+      clienteNombre: nombreCliente,
+      clienteTelefono: telefonoCliente,
+      monto,
+      interesPct,
+      montoTotal,
+      plan,
+      numCuotas,
+      periodoDias,
+      valorCuota,
+      fechaInicio,
+      fechaFin,
+      fechaFinManual: fechaFinEditarTocadaManualmente,
+    },
+    { merge: true }
+  );
+
+  modalEditar.classList.add("oculto");
+
+  // Si el préstamo editado es el que está abierto en la vista de
+  // detalle, la refrescamos para que se vea el cambio de una vez.
+  if (detalleActualId === prestamoEditandoId) {
+    mostrarDetalle(prestamoEditandoId, {
+      ...detalleActualP,
+      clienteNombre: nombreCliente,
+      clienteTelefono: telefonoCliente,
+      monto,
+      interesPct,
+      montoTotal,
+      plan,
+      numCuotas,
+      periodoDias,
+      valorCuota,
+      fechaInicio,
+      fechaFin,
+      fechaFinManual: fechaFinEditarTocadaManualmente,
+    });
+  }
 });
 
 // ------------------------------------------------------------
@@ -538,6 +812,7 @@ function renderTarjetaPrestamo(id, p, clasif) {
     <div class="tarjeta-acciones">
       ${clasif.categoria !== "completado" ? `<button type="button" class="btn btn-pagar" data-id="${id}">Marcar cuota ${clasif.proximaCuota}</button>` : ""}
       <button type="button" class="btn btn-secundario" data-ver="${id}">Ver cronograma</button>
+      <button type="button" class="btn btn-secundario" data-editar="${id}">✏️ Editar</button>
       ${wa ? `<a class="btn btn-whatsapp" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
       <button type="button" class="btn btn-eliminar" data-eliminar="${id}">Eliminar</button>
     </div>
@@ -547,6 +822,7 @@ function renderTarjetaPrestamo(id, p, clasif) {
     btnPagar.addEventListener("click", () => marcarCuota(id, clasif.proximaCuota, p.valorCuota));
   }
   div.querySelector("[data-ver]").addEventListener("click", () => mostrarDetalle(id, p));
+  div.querySelector("[data-editar]").addEventListener("click", () => abrirModalEditar(id, p));
   div.querySelector("[data-eliminar]").addEventListener("click", () => eliminarPrestamo(id, p.clienteNombre));
   return div;
 }
@@ -623,8 +899,18 @@ btnVolverLista.addEventListener("click", () => {
   if (unsubDetalle) unsubDetalle();
 });
 
+// El botón "Editar" de la vista de detalle abre el mismo modal de
+// edición, usando el préstamo que esté abierto en ese momento.
+let detalleActualId = null;
+let detalleActualP = null;
+btnEditarPrestamo.addEventListener("click", () => {
+  if (detalleActualId && detalleActualP) abrirModalEditar(detalleActualId, detalleActualP);
+});
+
 function mostrarDetalle(prestamoId, p) {
   if (unsubDetalle) unsubDetalle();
+  detalleActualId = prestamoId;
+  detalleActualP = p;
   vistaApp.classList.add("oculto");
   vistaDetalle.classList.remove("oculto");
   $("#detalle-titulo").textContent = p.clienteNombre;
