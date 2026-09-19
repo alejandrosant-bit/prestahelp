@@ -801,6 +801,7 @@ function renderTarjetaPrestamo(id, p, clasif) {
   div.className = `tarjeta ${clasif.categoria}`;
   const wa = linkWhatsapp(p.clienteTelefono, p.clienteNombre);
   const lineaEstado = estadoTexto(clasif, p);
+  const nota = p.notaGeneral || "";
 
   div.innerHTML = `
     <div class="tarjeta-header">
@@ -809,10 +810,12 @@ function renderTarjetaPrestamo(id, p, clasif) {
     </div>
     <div class="tarjeta-info">Monto: ${miles(p.monto)} · Total: ${miles(p.montoTotal)} · Cuota: ${miles(p.valorCuota)}</div>
     <div class="tarjeta-info">${lineaEstado}</div>
+    ${nota ? `<div class="cuota-nota">📌 ${nota}</div>` : ""}
     <div class="tarjeta-acciones">
       ${clasif.categoria !== "completado" ? `<button type="button" class="btn btn-pagar" data-id="${id}">Marcar cuota ${clasif.proximaCuota}</button>` : ""}
       <button type="button" class="btn btn-secundario" data-ver="${id}">Ver cronograma</button>
       <button type="button" class="btn btn-secundario" data-editar="${id}">✏️ Editar</button>
+      <button type="button" class="btn btn-secundario" data-nota-prestamo="${id}">📝 Nota</button>
       ${wa ? `<a class="btn btn-whatsapp" href="${wa}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
       <button type="button" class="btn btn-eliminar" data-eliminar="${id}">Eliminar</button>
     </div>
@@ -823,8 +826,29 @@ function renderTarjetaPrestamo(id, p, clasif) {
   }
   div.querySelector("[data-ver]").addEventListener("click", () => mostrarDetalle(id, p));
   div.querySelector("[data-editar]").addEventListener("click", () => abrirModalEditar(id, p));
+  div.querySelector("[data-nota-prestamo]").addEventListener("click", () => pedirNotaPrestamo(id, nota));
   div.querySelector("[data-eliminar]").addEventListener("click", () => eliminarPrestamo(id, p.clienteNombre));
   return div;
+}
+
+// ------------------------------------------------------------
+// Nota general del préstamo (no de una cuota en particular) — para
+// dejar un recordatorio visible de una vez en la lista principal, sin
+// tener que entrar al cronograma (ej. "vive al fondo de la calle",
+// "pide que le avisen antes de ir").
+// ------------------------------------------------------------
+async function guardarNotaPrestamo(prestamoId, texto) {
+  const ref = doc(db, "cobradores", cobradorId, "prestamos", prestamoId);
+  await setDoc(ref, { notaGeneral: (texto || "").trim() }, { merge: true });
+}
+
+function pedirNotaPrestamo(prestamoId, notaActual) {
+  const nueva = prompt(
+    "Nota para este préstamo (se ve en la lista principal). Déjalo vacío para borrarla:",
+    notaActual || ""
+  );
+  if (nueva === null) return;
+  guardarNotaPrestamo(prestamoId, nueva);
 }
 
 // ------------------------------------------------------------
