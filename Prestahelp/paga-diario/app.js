@@ -203,6 +203,7 @@ const formLogin = $("#form-login");
 const loginError = $("#login-error");
 const btnSalir = $("#btn-salir");
 const listaPrestamos = $("#lista-prestamos");
+const inputBuscar = $("#input-buscar");
 const badgeConexion = $("#badge-conexion");
 const formNuevoPrestamo = $("#form-nuevo-prestamo");
 const previewCalculo = $("#preview-calculo");
@@ -396,6 +397,8 @@ onAuthStateChanged(auth, (user) => {
     if (unsubPrestamos) unsubPrestamos();
     if (unsubDetalle) unsubDetalle();
     limpiarPrestamos();
+    inputBuscar.value = "";
+    filtroBusqueda = "";
   }
 });
 
@@ -699,9 +702,19 @@ function suscribirPrestamos() {
 // aparece UNA sola vez, y se despliega al tocar su nombre.
 const ORDEN_URGENCIA = ["atrasado", "hoy", "manana", "al_dia", "completado"];
 const clientesExpandidos = new Set();
+let filtroBusqueda = "";
 
 function claveCliente(p) {
   return (p.clienteNombre || "").trim().toLowerCase();
+}
+
+// Quita tildes para que buscar "yancarlo" también encuentre "Yancarló",
+// y viceversa — así el cobrador no tiene que escribir exacto.
+function normalizarTexto(s) {
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
 }
 
 function estadoTexto(clasif, p) {
@@ -715,6 +728,11 @@ function estadoTexto(clasif, p) {
   return `${etiqueta}: ${formatoBonito(clasif.proximaFecha)} · Cuota ${clasif.proximaCuota}/${p.numCuotas}`;
 }
 
+inputBuscar.addEventListener("input", () => {
+  filtroBusqueda = normalizarTexto(inputBuscar.value.trim());
+  renderLista();
+});
+
 function renderLista() {
   const porCliente = new Map(); // clave -> { nombre, items: [{id, p, clasif}] }
   let hayCargando = false;
@@ -723,6 +741,9 @@ function renderLista() {
     if (!entry.cargado) { hayCargando = true; return; }
     const clasif = clasificarPrestamo(entry.p, entry.pagadasSet);
     const clave = claveCliente(entry.p);
+    // Si hay algo escrito en el buscador, se salta cualquier cliente
+    // cuyo nombre no lo contenga.
+    if (filtroBusqueda && !normalizarTexto(entry.p.clienteNombre).includes(filtroBusqueda)) return;
     if (!porCliente.has(clave)) porCliente.set(clave, { nombre: entry.p.clienteNombre, items: [] });
     porCliente.get(clave).items.push({ id, p: entry.p, clasif });
   });
@@ -762,6 +783,8 @@ function renderLista() {
 
   if (hayCargando && listaPrestamos.innerHTML === "") {
     listaPrestamos.innerHTML = `<p class="vacio">Cargando…</p>`;
+  } else if (filtroBusqueda && listaPrestamos.innerHTML === "") {
+    listaPrestamos.innerHTML = `<p class="vacio">No se encontró ningún cliente con ese nombre.</p>`;
   }
 }
 

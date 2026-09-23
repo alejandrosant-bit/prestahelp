@@ -46,6 +46,17 @@ input, select {
 .error { color: #dc2626; font-size: 13px; min-height: 18px; }
 .nota { font-size: 12px; color: #888; margin-top: 14px; }
 
+.fila-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  margin-top: 12px;
+  cursor: pointer;
+}
+.fila-check input { width: 18px; height: 18px; flex: none; }
+#vista-bloqueo .btn-primario { width: 100%; margin-top: 16px; }
+
 .tel-row { display: flex; gap: 6px; }
 .tel-row select { flex: 0 0 92px; }
 .tel-row input { flex: 1; min-width: 0; }
@@ -68,6 +79,16 @@ input, select {
   padding: 16px 16px 8px;
 }
 .topbar h2 { margin: 0; }
+
+.buscador { padding: 4px 16px 0; }
+.buscador input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #d8dce1;
+  border-radius: 12px;
+  font-size: 15px;
+  background: #fff;
+}
 
 .lista { padding: 8px 16px 100px; display: flex; flex-direction: column; gap: 12px; }
 .vacio { text-align: center; color: #888; margin-top: 40px; }
@@ -216,4 +237,5 @@ h3 { padding: 0 16px; margin: 18px 0 4px; }
 
 @media (min-width: 480px) {
   .lista { max-width: 480px; margin: 0 auto; }
+  .buscador { max-width: 480px; margin: 0 auto; }
 }
