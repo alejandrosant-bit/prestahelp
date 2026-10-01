@@ -497,7 +497,12 @@ formNuevoPrestamo.addEventListener("submit", async (e) => {
   const prestamoId = `prestamo_${cobradorId}_${Date.now()}`;
   const ref = doc(db, "cobradores", cobradorId, "prestamos", prestamoId);
 
-  await setDoc(ref, {
+  // OJO: NO se espera ("await") a que Firebase confirme. Sin señal esa
+  // confirmación nunca llega y el formulario se quedaba trabado, como si
+  // no guardara. Firestore ya lo guardó en el teléfono en este mismo
+  // instante (aparece en la lista de una vez) y lo sube solo cuando
+  // vuelva la conexión.
+  setDoc(ref, {
     clienteNombre: nombreCliente,
     clienteTelefono: telefonoCliente,
     monto,
@@ -512,7 +517,8 @@ formNuevoPrestamo.addEventListener("submit", async (e) => {
     fechaFinManual: fechaFinTocadaManualmente,
     estado: "activo",
     creadoEn: serverTimestamp(),
-  });
+    creadoEnLocal: Date.now(),
+  }).catch((err) => console.error("Error guardando préstamo:", err));
 
   modalNuevo.classList.add("oculto");
 });
@@ -602,7 +608,8 @@ formEditarPrestamo.addEventListener("submit", async (e) => {
   const fechaFin = epFechaFin.value || fechaNominalCuota(fechaInicio, periodoDias, numCuotas);
 
   const ref = doc(db, "cobradores", cobradorId, "prestamos", prestamoEditandoId);
-  await setDoc(
+  // Sin "await": se guarda en el teléfono al instante y sube cuando haya señal.
+  setDoc(
     ref,
     {
       clienteNombre: nombreCliente,
@@ -619,7 +626,7 @@ formEditarPrestamo.addEventListener("submit", async (e) => {
       fechaFinManual: fechaFinEditarTocadaManualmente,
     },
     { merge: true }
-  );
+  ).catch((err) => console.error("Error editando préstamo:", err));
 
   modalEditar.classList.add("oculto");
 
@@ -655,10 +662,10 @@ function limpiarPrestamos() {
 }
 
 function suscribirPrestamos() {
-  const q = query(
-    collection(db, "cobradores", cobradorId, "prestamos"),
-    orderBy("creadoEn", "desc")
-  );
+  // Sin ordenar por "creadoEn": esa fecha la pone el servidor, y un
+  // préstamo creado sin señal todavía no la tiene — podía quedar fuera
+  // de la lista hasta sincronizar. La lista igual se agrupa por secciones.
+  const q = query(collection(db, "cobradores", cobradorId, "prestamos"));
   unsubPrestamos = onSnapshot(q, (snap) => {
     const idsVistos = new Set();
     snap.forEach((docSnap) => {
@@ -883,11 +890,18 @@ async function eliminarPrestamo(prestamoId, nombreCliente) {
   const ok = confirm(`¿Eliminar el préstamo de ${nombreCliente}? Esto borra también todo su historial de pagos y no se puede deshacer.`);
   if (!ok) return;
 
-  const pagosRef = collection(db, "cobradores", cobradorId, "prestamos", prestamoId, "pagos");
-  const pagosSnap = await getDocs(pagosRef);
-  await Promise.all(pagosSnap.docs.map((d) => deleteDoc(d.ref)));
-
-  await deleteDoc(doc(db, "cobradores", cobradorId, "prestamos", prestamoId));
+  // Funciona igual sin señal: las cuotas y notas tienen nombres fijos
+  // (cuota_01, cuota_02...), así que se borran directo sin tener que
+  // consultar al servidor primero. Nada se espera ("await"): se borra en
+  // el teléfono al instante y Firestore lo sube cuando haya conexión.
+  const entry = prestamos.get(prestamoId);
+  const maxCuotas = Math.max(entry?.p?.numCuotas || 0, 24);
+  const log = (err) => console.error("Error eliminando:", err);
+  for (let n = 1; n <= maxCuotas; n++) {
+    deleteDoc(doc(db, "cobradores", cobradorId, "prestamos", prestamoId, "pagos", idCuota(n))).catch(log);
+    deleteDoc(doc(db, "cobradores", cobradorId, "prestamos", prestamoId, "notas", idCuota(n))).catch(log);
+  }
+  deleteDoc(doc(db, "cobradores", cobradorId, "prestamos", prestamoId)).catch(log);
 }
 
 // ------------------------------------------------------------
@@ -1050,11 +1064,5 @@ function mostrarDetalle(prestamoId, p) {
   };
 }
 
-// ------------------------------------------------------------
-// Registro del service worker (app shell offline)
-// ------------------------------------------------------------
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(console.error);
-  });
-}
+// El service worker se registra en index.html (antes de cargar este
+// archivo), para que quede activo aunque algo de aquí falle.

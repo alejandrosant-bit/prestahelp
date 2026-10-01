@@ -178,6 +178,31 @@
   <div id="detalle-cuotas" class="cuotas-grid"></div>
 </div>
 
+<script>
+  // Guarda la app en el teléfono para que abra sin internet. Se registra
+  // de una vez (sin esperar a nada más), así queda activa aunque la
+  // conexión sea mala o algo de la app falle al cargar.
+  if ("serviceWorker" in navigator) {
+    var habiaVersionAnterior = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register("./sw.js").catch(function (e) { console.error(e); });
+
+    // Cuando llega una actualización (solo pasa con internet), se recarga
+    // para mostrar la versión nueva — pero nunca con un formulario abierto,
+    // para no borrarle al cobrador lo que esté escribiendo.
+    var recargaPendiente = false;
+    function hayFormularioAbierto() {
+      return !!document.querySelector(".modal:not(.oculto)");
+    }
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (!habiaVersionAnterior) return; // primera instalación: nada que recargar
+      if (hayFormularioAbierto()) recargaPendiente = true;
+      else location.reload();
+    });
+    document.addEventListener("visibilitychange", function () {
+      if (recargaPendiente && document.visibilityState === "hidden") location.reload();
+    });
+  }
+</script>
 <script type="module" src="./app.js"></script>
 </body>
 </html>
